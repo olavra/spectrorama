@@ -2,8 +2,8 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QComboBox,
     QPushButton, QLabel, QApplication
 )
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QPainter, QColor, QPainterPath, QCursor, QFontDatabase
+from PyQt6.QtCore import Qt, QSettings
+from PyQt6.QtGui import QPainter, QColor, QPainterPath, QCursor, QFontDatabase, QIcon
 import os
 import sys
 
@@ -80,13 +80,18 @@ class SoundVolumeWidget(QWidget):
     def _init_window(self):
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint |
-            Qt.WindowType.WindowStaysOnTopHint |
-            Qt.WindowType.Tool
+            Qt.WindowType.WindowStaysOnTopHint
         )
+        self.setWindowIcon(QIcon(_resource_path("ico.png")))
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setMouseTracking(True)
         self.setMinimumSize(320, 120)
-        self.resize(480, 320)
+        settings = QSettings("Spectrorama", "Spectrorama")
+        geometry = settings.value("geometry")
+        if geometry:
+            self.restoreGeometry(geometry)
+        else:
+            self.resize(480, 480)
         self.setSizePolicy(
             self.sizePolicy().horizontalPolicy(),
             self.sizePolicy().verticalPolicy(),
@@ -133,6 +138,19 @@ class SoundVolumeWidget(QWidget):
         drag.setCursor(QCursor(Qt.CursorShape.SizeAllCursor))
         bar.addWidget(drag, 1)
 
+        # Floor limit selector
+        floor_label = QLabel("Floor")
+        floor_label.setFixedWidth(28)
+        bar.addWidget(floor_label)
+
+        self._floor_combo = QComboBox()
+        self._floor_combo.setFixedWidth(68)
+        self._floor_combo.setFixedHeight(20)
+        for val in [-80, -100, -120, -140, -160]:
+            self._floor_combo.addItem(f"{val} dB", val)
+        self._floor_combo.currentIndexChanged.connect(self._on_floor_changed)
+        bar.addWidget(self._floor_combo)
+
         # Pin button
         self._pin_btn = QPushButton("⬘")
         self._pin_btn.setFixedSize(28, 20)
@@ -152,6 +170,14 @@ class SoundVolumeWidget(QWidget):
         self._spectrum = SpectrumAnalyzer()
         self._spectrum.setMinimumHeight(40)
         root.addWidget(self._spectrum, stretch=1)
+
+        # Restore saved preferences
+        _s = QSettings("Spectrorama", "Spectrorama")
+        floor_idx = int(_s.value("floor_index", 2))
+        pinned    = _s.value("pinned", True, type=bool)
+        self._floor_combo.setCurrentIndex(floor_idx)       # triggers _on_floor_changed
+        self._pin_btn.setChecked(pinned)
+        self._toggle_pin(pinned)
 
         # Device row
         dev_row = QHBoxLayout()
@@ -327,6 +353,10 @@ class SoundVolumeWidget(QWidget):
         self._capture.samples_ready.connect(self._spectrum.push_samples)
         self._capture.start()
 
+    def _on_floor_changed(self, idx):
+        val = self._floor_combo.currentData()
+        self._spectrum.set_floor(float(val))
+
     # ── Always on top toggle ─────────────────────────────────────────────────
 
     def _toggle_pin(self, checked):
@@ -343,6 +373,10 @@ class SoundVolumeWidget(QWidget):
     # ── Cleanup ──────────────────────────────────────────────────────────────
 
     def closeEvent(self, e):
+        settings = QSettings("Spectrorama", "Spectrorama")
+        settings.setValue("geometry", self.saveGeometry())
+        settings.setValue("floor_index", self._floor_combo.currentIndex())
+        settings.setValue("pinned", self._pin_btn.isChecked())
         if self._capture:
             self._capture.stop()
         super().closeEvent(e)
