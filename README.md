@@ -4,7 +4,7 @@ A lightweight real-time audio spectrum analyzer for Windows. It captures your sy
 
 ## Demo
 
-![Demo](src/Demo.mp4)
+![Demo](src/Demo.gif)
 
 ## Features
 
